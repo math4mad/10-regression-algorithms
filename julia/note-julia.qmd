@@ -1,0 +1,114 @@
+---
+title: "Practical Introduction to 10 Regression Algorithm"
+author: "math4mads"
+jupyter: julia-1.9
+code-fold: true
+---
+
+## import package
+
+```{julia}
+using GLMakie, MLJ,CSV,DataFrames,StatsBase,LinearAlgebra
+```
+
+## import depdence function
+
+```{julia}
+  include("../cor-plot.jl")
+  include("../data-processing.jl")
+```
+##  describe datafram
+```{julia}
+df=get_data()
+first(df,3)
+```
+##  data cor plot
+
+```{julia}
+  plot_cor(df)
+```
+
+```{julia}
+ hist(df[!,:AreaIncome])
+```
+
+```{julia}
+ hist(df[!,:Price])
+```
+
+```{julia}
+fig=Figure()
+ax=Axis(fig[1,1],xlabel="HouseAge",ylabel="Price")
+x1=df[!,:HouseAge]
+x2=df[!,:Price]
+scatter!(x1,x2)
+fig
+```
+
+
+```{julia}
+fig=Figure()
+ax=Axis(fig[1,1],xlabel="AreaIncome",ylabel="Price")
+x1=df[!,:AreaIncome]
+x2=df[!,:Price]
+scatter!(x1,x2)
+fig
+```
+
+
+```{julia}
+df_cor = (cor(df|>Matrix)) .|> d -> round(d, digits=3)
+label=names(df)|>Array
+fig = Figure(resolution=(1000, 600))
+ax1 = Axis(fig[1, 1]; xticks=(1:6, label), yticks=(1:6, label), title="house price cor matrix")
+hm = heatmap!(ax1, df_cor)
+Colorbar(fig[1, 2], hm)
+[text!(ax1, x, y; text=string(df_cor[x, y]), color= x==y ? :red : :white, fontsize=13, align=(:center, :center)) for x in 1:6, y in 1:6]
+fig
+```
+
+```{julia}
+ y, X = unpack(df, ==(:Price); rng=123);
+ xtest=df[1:3:end,1:5]
+ ytest=df[1:3:end,6]
+```
+
+```{julia}
+LinearRegressor = @load LinearRegressor pkg=MLJLinearModels
+model=LinearRegressor()
+mach = MLJ.fit!(machine(model,X,y))
+```
+
+```{julia}
+fp=MLJ.fitted_params(mach)
+```
+```{julia}
+RMS=round(rmsd(ŷ, ytest), sigdigits=4)
+#MSD=round(msd(ŷ, ytest), sigdigits=4)
+
+```
+
+```{julia}
+
+ŷ = MLJ.predict(mach, xtest)
+res = ŷ .- ytest
+f, ax, l1=stem(res)
+l2 = hlines!(ax, [0];color=(:red,0.5))
+f
+
+```
+
+```{julia}
+scatter(ytest,ŷ)
+```
+
+```{julia}
+  hist(res, density=true)
+```
+
+
+
+
+
+
+

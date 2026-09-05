@@ -1,0 +1,18 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Quarto / Jupyter build output
+/.quarto/
+/_site/
+/note/_note_files/
+*.render.lock
+_freeze/
+
+# macOS
+.DS_Store
+Icon
