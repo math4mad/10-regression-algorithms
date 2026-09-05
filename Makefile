@@ -5,6 +5,8 @@ VENV := .venv
 PY   := $(VENV)/bin/python
 export JUPYTER_PATH := $(abspath $(VENV)/share/jupyter)
 export PATH         := $(abspath $(VENV)/bin):$(PATH)
+# reg10 is a plain source package (no install step), so it must be on the path.
+export PYTHONPATH   := $(abspath src)
 
 .PHONY: venv install smoke compare pairs render preview publish clean
 

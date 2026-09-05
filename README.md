@@ -84,6 +84,10 @@ python scripts/pair_plot.py
 make render                       # quarto render -> _site/
 ```
 
+`reg10` is a plain source package under `src/` with no install step, so give the
+interpreter a path to it (`export PYTHONPATH=src`) or run through `make`, which does that
+for you. The scripts in `scripts/` add it themselves.
+
 `make` exports `JUPYTER_PATH=$(PWD)/.venv/share/jupyter` so Quarto uses the venv's
 `python3` kernel instead of a stale user-level kernelspec; if you call `quarto render`
 directly, export it yourself.

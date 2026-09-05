@@ -408,10 +408,10 @@ pip install -r requirements.txt
 python scripts/pair_plot.py            # figures/us-housing-cor.png
 python scripts/lasso_regressor.py      # one algorithm, like lasso-regressor.jl
 python scripts/compare_algorithms.py   # the whole table, like 10-algorithm-compare.jl
-python -m reg10.models                 # smoke test of the package itself
+PYTHONPATH=src python -m reg10.models  # smoke test of the package itself
 
 make render                            # quarto render (uses the project venv kernel)
-make publish                           # quarto publish to gh-pages
+make publish                           # git push, which triggers the gh-pages workflow
 ```
 
 On macOS/Linux, `make` exports `JUPYTER_PATH` so that Quarto picks the `python3` kernel
