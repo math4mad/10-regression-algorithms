@@ -1,7 +1,14 @@
 # Runtime dependencies of the notebook and of scripts/.
-# Quarto also needs a Python kernel: ipykernel provides the `python3` kernelspec.
 numpy>=2.0
 pandas>=2.2
 matplotlib>=3.9
 scikit-learn>=1.6
+
+# Rendering: Quarto ships a small Jupyter runner (share/jupyter/notebook.py) that is
+# executed with the ambient Python, so these are needed at `quarto render` time even
+# though no cell imports them. ipykernel provides the `python3` kernelspec itself.
 ipykernel>=6.29
+pyyaml>=6
+nbclient>=0.10
+jupyter-client>=8
+nbformat>=5.10
