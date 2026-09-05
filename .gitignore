@@ -13,6 +13,11 @@ __pycache__/
 *.render.lock
 _freeze/
 
+# Figures written by scripts/
+/figures/
+
 # macOS
 .DS_Store
 Icon
+
+**/*.quarto_ipynb

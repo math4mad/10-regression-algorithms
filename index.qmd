@@ -1,0 +1,428 @@
+---
+title: "Practical Introduction to 10 Regression Algorithms"
+subtitle: "A Julia / MLJ project refactored to Python / scikit-learn"
+author: "math4mads"
+date: last-modified
+date-format: "YYYY-MM-DD"
+copyright: "MIT"
+categories: [regression, scikit-learn, pandas, matplotlib, quarto, julia]
+jupyter: python3
+format:
+  html:
+    toc: true
+    number-sections: true
+    fig-dpi: 96
+---
+
+## Why this note exists
+
+This is the Python sibling of a small Julia project that fitted ten regression
+algorithms to the *USA housing* dataset with [MLJ.jl](https://github.com/MLJ/mlj.jl) and
+drew the diagnostics with GLMakie. The whole point of the refactor is that each Julia
+script has exactly one Python counterpart, so the two versions can be read side by side.
+
+| Julia (original)                                    | Python (this repo)                                  |
+|-----------------------------------------------------|-----------------------------------------------------|
+| `data-processing.jl`                                 | `src/reg10/data_processing.py`                       |
+| `cor-plot.jl`                                        | `src/reg10/plots.py` (`pairs_plot`)                  |
+| `10-algorithm-compare.jl`                            | `src/reg10/models.py` + `scripts/compare_algorithms.py` |
+| `lasso-regressor.jl`, `elastic-net-regressor.jl`, `robust-regressor.jl`, `EpsilonSVR.jl`, `NuSVR-regressor.jl`, `neural-network-regression.jl` | `scripts/*_regressor.py` (one per algorithm) |
+| `Quarto/...qmd` (`jupyter: julia-1.9`)               | `index.qmd` (`jupyter: python3`)                     |
+
+Nothing else is needed to follow along apart from the four libraries the project uses:
+**numpy**, **pandas**, **matplotlib** and **scikit-learn**.
+
+## Setup
+
+```{python}
+import pathlib, sys
+
+# The reg10 package lives in ./src ; make it importable without installing it.
+sys.path.insert(0, str(pathlib.Path.cwd() / "src"))
+
+import numpy as np
+import pandas as pd
+import sklearn
+from sklearn.compose import TransformedTargetRegressor
+from sklearn.linear_model import Lasso
+from sklearn.model_selection import cross_validate
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+from reg10 import plots
+from reg10.data_processing import FEATURES, TARGET, get_data, partition, unpack
+from reg10.models import (
+    coefficient_table,
+    comparison_table,
+    fit_one,
+    model_collection,
+    rmsd,
+    score_models,
+)
+
+print(f"python {sys.version.split()[0]} | numpy {np.__version__} | "
+      f"pandas {pd.__version__} | scikit-learn {sklearn.__version__}")
+```
+
+## The data
+
+Five area-level features (income, house age, rooms, bedrooms, population) predict
+`Price`. The loader performs the same steps as the Julia `data_prepare` pipeline:
+read the CSV, coerce every modelling column to a float (MLJ's `coerce(Count => Continuous)`),
+drop missing rows, rename the columns, and drop the free-text `Address`.
+
+```{python}
+df = get_data()
+df.head(3)
+```
+
+```{python}
+df.describe().T.round(3)
+```
+
+```{python}
+#| echo: false
+print(f"{df.shape[0]} rows, {df.shape[1]} columns, {int(df.isna().sum().sum())} missing values")
+```
+
+## Exploratory plots
+
+`cor-plot.jl` built a GLMakie grid with `density!` on the diagonal and `scatter!`
+everywhere else; `plots.pairs_plot` is the matplotlib version of the same figure.
+
+```{python}
+#| fig-dpi: 72
+plots.pairs_plot(df, max_points=900)
+```
+
+```{python}
+plots.hist(df["AreaIncome"], bins=50)
+```
+
+```{python}
+plots.hist(df[TARGET], bins=50, color="tab:green")
+```
+
+```{python}
+plots.scatter(df["HouseAge"], df[TARGET])
+```
+
+```{python}
+plots.scatter(df["AreaIncome"], df[TARGET], color="tab:orange")
+```
+
+The Julia note computed `(cor(Matrix(df))) .|> d -> round(d, digits=3)` and drew it with
+`heatmap!` plus a `text!` in every cell:
+
+```{python}
+plots.cor_heatmap(df)
+```
+
+## Train / test split
+
+```{python}
+X, y = unpack(df, TARGET)
+X_train, X_test, y_train, y_test = partition(X, y)
+print(f"train {X_train.shape[0]} rows | test {X_test.shape[0]} rows")
+X_test.head(3)
+```
+
+::: {.callout-warning title="One Julia quirk deliberately not ported"}
+Several Julia scripts used `xtest = df[1:3:end, 1:5]` -- every third row of the *whole*
+frame -- as the test set, while fitting on rows that include those very observations.
+The scores were therefore optimistic. The Python version always uses the honest
+70/30 split (`partition`, seed 123). `reg10.data_processing.every_third()` keeps the old
+behaviour available if you want to reproduce the original numbers.
+:::
+
+## The ten algorithms
+
+The Julia `LinearMolesCollections()` returned a `Dict` of MLJ model *types*; here
+`model_collection()` returns `ModelSpec` records that carry the scikit-learn estimator
+plus the Julia model it replaces, so the printed table can name both.
+
+```{python}
+specs = model_collection()
+fitted = score_models(X_train, y_train, X_test, y_test, specs=specs)
+```
+
+```{python}
+pd.DataFrame(
+    [(s.key, s.label, s.julia_model, s.julia_pkg) for s in specs.values()]
+).to_string(index=False, header=["model", "description", "julia model", "julia package"])
+```
+
+### Ranking by RMSD
+
+`StatsBase.rmsd(yhat, ytest)` in Julia is `sklearn.metrics.root_mean_squared_error` here
+(also exposed as `reg10.models.rmsd`).
+
+```{python}
+table = comparison_table(fitted)
+table
+```
+
+```{python}
+plots.rmsd_barplot(table)
+```
+
+::: {.callout-note title="Read the table honestly"}
+All ten models see exactly the same five features, and the six linear variants collapse
+onto almost the same answer (RMSD ≈ 102.4k). The data were generated by a linear process
+with Gaussian noise -- which this Kaggle set is -- so nothing can beat least squares by
+much, and the interesting column is `RMSD (train)`: `RandomForest` is 44k better in-sample
+than out-of-sample (over-fitting), while `NuSVR` and `MLP` pay for their flexibility in
+slightly worse test error.
+:::
+
+### Residuals and fitted values
+
+The Julia `plot_residue(yhat, ytest)` drew a `stem!` of `yhat .- ytest` with a red
+`hlines!` at zero. Same picture, all ten at once:
+
+```{python}
+#| fig-dpi: 80
+plots.residue_grid(fitted)
+```
+
+```{python}
+#| fig-dpi: 80
+plots.parity_grid(fitted)
+```
+
+```{python}
+plots.residual_hist(np.concatenate([f.residuals for f in fitted]), bins=80,
+                    title="Residuals pooled over all ten models")
+```
+
+### Coefficients
+
+MLJ's `fitted_params(mach)` gives the raw coefficients. Because every estimator here is
+wrapped in a standardising pipeline, `FittedModel.coefficients()` converts the slopes back
+into USD per raw unit of each feature, so the columns are directly comparable.
+
+For the kernel, neural and forest models there is no global slope at all: the numbers below
+are central differences of the fitted predictor around the training mean (h = 1% of one
+feature sd). Read them as "how much did the prediction move when I nudged this feature",
+not as a coefficient. The step size is a real limitation for piecewise-constant models --
+`RandomForest` reports **0** for `HouseBedrooms` (no split threshold of any of the 200 trees
+falls inside a ±0.003-bedroom window, even though the feature carries 0.8% of the forest's
+importance) and an absurd 808k for `HouseAge` (a boundary does sit inside the window). The
+cell after the heatmap puts those two numbers next to what the forest actually says about
+its features.
+
+```{python}
+coefs = coefficient_table(fitted)
+coefs.round(1)
+```
+
+```{python}
+plots.coefficient_heatmap(coefs)
+```
+
+```{python}
+from sklearn.inspection import permutation_importance
+
+rf = next(f for f in fitted if f.key == "RandomForest")
+forest = rf.machine.regressor_.steps[-1][1]
+perm = permutation_importance(
+    rf.machine, X_test, y_test, n_repeats=5, random_state=123, scoring="neg_root_mean_squared_error"
+)
+comparison = pd.DataFrame(
+    {
+        "finite-difference slope (USD)": coefs["RandomForest"],
+        "impurity importance": forest.feature_importances_,
+        "permutation increase in RMSD": perm.importances_mean,
+    }
+).sort_values("permutation increase in RMSD", ascending=False)
+comparison.round(4)
+```
+
+## One model in detail
+
+```{python}
+best = min(fitted, key=lambda f: f.rmsd_test)
+print(f"best test RMSD: {best.key} at {best.rmsd_test:,.0f} USD")
+best.params
+```
+
+```{python}
+print(f"fitted price at the training means : {best.prediction_at_mean:,.0f} USD")
+print("\nslope (USD per unit of feature):")
+print(best.coefficients().round(1).to_string())
+```
+
+```{python}
+plots.residue_plot(best.residuals, title=f"{best.key} — test residuals")
+```
+
+```{python}
+plots.predicted_vs_actual(best.y_true, best.y_pred, title=f"{best.key} — predicted vs actual")
+```
+
+```{python}
+plots.residual_hist(best.residuals, title=f"{best.key} — residual distribution")
+```
+
+## Does the penalty matter?
+
+The Julia models came from `MLJLinearModels`, whose `penalty` hyper-parameter defaults to
+**0**, i.e. the un-regularised least-squares fit. scikit-learn's defaults are *not* zero
+(`alpha=1.0`), which is one of the two reasons a naive port produces different numbers.
+This sweep makes the effect visible -- and shows why `alpha` has to be read together with
+the standardised units the pipeline fits in:
+
+```{python}
+alphas = [0.001, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0]
+rows = []
+for alpha in alphas:
+    model = TransformedTargetRegressor(
+        make_pipeline(StandardScaler(), Lasso(alpha=alpha)), transformer=StandardScaler()
+    )
+    cv = cross_validate(model, X_train, y_train, cv=5, scoring="neg_root_mean_squared_error")
+    model.fit(X_train, y_train)
+    coef = model.regressor_.named_steps["lasso"].coef_
+    rows.append(
+        {
+            "alpha": alpha,
+            "cv RMSD": -cv["test_score"].mean(),
+            "test RMSD": rmsd(model.predict(X_test), y_test),
+            "coefficients zeroed": int((coef == 0).sum()),
+        }
+    )
+penalty = pd.DataFrame(rows)
+penalty[["cv RMSD", "test RMSD"]] = penalty[["cv RMSD", "test RMSD"]].round(0)
+penalty
+```
+
+```{python}
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.plot(penalty["alpha"], penalty["test RMSD"], marker="o", color="tab:blue")
+ax.axvline(1.0, color="red", ls="--", alpha=0.6, label="sklearn default alpha = 1")
+ax.axvline(0.001, color="green", ls=":", alpha=0.8, label="closest to MLJ's penalty = 0")
+ax.set_xscale("log")
+ax.set_xlabel("Lasso alpha (standardised units)")
+ax.set_ylabel("test RMSD (USD)")
+ax.legend(frameon=False)
+ax.set_title("One hyper-parameter, ten orders of magnitude of behaviour")
+fig.tight_layout()
+```
+
+## Cross-validated comparison
+
+The Julia neural-network script finished with
+`evaluate!(mach, resampling=CV(nfolds=5), measure=l2)`. `cross_validate` is the equivalent,
+run here over the whole registry (three folds to keep the notebook quick to re-render):
+
+```{python}
+cv_rows = []
+for key, spec in specs.items():
+    scores = cross_validate(
+        spec.clone(), X, y, cv=3, scoring="neg_root_mean_squared_error", n_jobs=1
+    )
+    rmse_folds = -scores["test_score"]  # this scorer returns negative RMSE, not negative MSE
+    cv_rows.append(
+        {
+            "model": key,
+            "cv RMSD (mean)": rmse_folds.mean(),
+            "cv RMSD (sd)": rmse_folds.std(ddof=1),
+            "mean fit (s)": scores["fit_time"].mean(),
+        }
+    )
+cv_table = pd.DataFrame(cv_rows).sort_values("cv RMSD (mean)")
+cv_table.round(3)
+```
+
+```{python}
+plots.rmsd_barplot(cv_table, value_col="cv RMSD (mean)")
+```
+
+## Porting notes
+
+::: {.callout-important title="Five places the Python version is deliberately different"}
+1. **Scaling.** MLJLinearModels tolerates raw dollar-scale features; `SGDRegressor`,
+   `SVR`, `NuSVR` and `MLPRegressor` do not. Every estimator is wrapped in
+   `TransformedTargetRegressor(make_pipeline(StandardScaler(), model), transformer=StandardScaler())`:
+   features standardised by the pipeline, target standardised by the meta-estimator -- the
+   exact analogue of the `Standardizer |> TransformedTargetModel(model, target=Standardizer)`
+   chain the Julia neural-network script used, applied to all ten models. `LinearRegression`
+   and the forest are numerically unchanged by it; `NuSVR` improves from an RMSD of about
+   349k on the raw dollar target to about 109k. Worth stating plainly:
+   `TransformedTargetRegressor` defaults to the *identity* on `y`, so the
+   `transformer=StandardScaler()` argument is what does the work, and forgetting it is the
+   easiest way to break this port.
+2. **Penalty defaults.** MLJLinearModels defaults to `penalty = 0` (plain least squares);
+   scikit-learn defaults to `alpha = 1.0`, which is severe once the target is standardised
+   -- it shrinks `Lasso` to an almost constant fit (test RMSD 361k). The registry therefore
+   uses `alpha = 0.01` for `Lasso` and `ElasticNet` to sit in the same regime as the Julia
+   defaults; the `alpha` sweep above shows the whole curve.
+3. **Support-vector defaults.** With the target standardised, LIBSVM-style `C = 1` is
+   reasonable, so `SVR` keeps the Julia polynomial kernel (`degree=3`, `coef0=1`) at `C = 1`
+   and `NuSVR` keeps `nu = 0.5`, `C = 1`, `gamma="scale"`. Raising `C` buys nothing here and
+   costs a factor of thirty in fit time.
+4. **The split.** Julia's `partition((X, y), 0.7, multi=true)` and the
+   `df[1:3:end, ...]` test frames are replaced by one seeded
+   `train_test_split(train_size=0.7, random_state=123)`.
+5. **Names.** MLJ's `RobustRegressor` is Huber regression, so its counterpart is
+   `HuberRegressor`; `NeuralNetworkRegressor` (MLJFlux, builder
+   `Chain(Dense(n_in,64,relu), Dense(64,32,relu), Dense(32,n_out))`) becomes
+   `MLPRegressor(hidden_layer_sizes=(64, 32), activation="relu")`, where Flux's
+   `epochs=20` becomes `max_iter=500` with `early_stopping=True` because scikit-learn counts
+   full-batch epochs rather than mini-batch steps. The column `HouseBedromms` is spelled
+   correctly as `HouseBedrooms` here.
+:::
+
+::: {.callout-tip title="Idiom map worth memorising"}
+| MLJ / Julia                                          | scikit-learn                                                     |
+|------------------------------------------------------|------------------------------------------------------------------|
+| `machine(model, X, y) \|> fit!`                       | `model.fit(X, y)`                                                 |
+| `predict(mach, Xnew)`                                | `model.predict(Xnew)`                                             |
+| `fitted_params(mach)`                                | `model.coef_`, `model.intercept_`, ...                            |
+| `report(mach)`                                       | `model.n_features_in_`, `model.n_iter_`, ...                      |
+| `@load LassoRegressor pkg=MLJLinearModels`           | `from sklearn.linear_model import Lasso`                          |
+| `Standardizer \|> model`                             | `make_pipeline(StandardScaler(), model)`                          |
+| `TransformedTargetModel(model, target=Standardizer)` | `TransformedTargetRegressor(model, transformer=StandardScaler())`  |
+| `evaluate!(mach, resampling=CV(nfolds=5), measure=l2)` | `cross_validate(model, X, y, cv=5, scoring="neg_root_mean_squared_error")` |
+| `StatsBase.rmsd(yhat, y)`                            | `sklearn.metrics.root_mean_squared_error(y, yhat)`                |
+| `Figure(resolution=(1200,500))`, `stem!`, `heatmap!`  | `plt.subplots(figsize=(12,5))`, `ax.stem`, `ax.imshow`            |
+:::
+
+::: {.callout-note title="Two scikit-learn naming traps"}
+1. `sklearn.metrics.neg_root_mean_squared_error` no longer exists as a *function* in
+   scikit-learn 1.9 (importing it raises). Use `root_mean_squared_error(y_true, y_pred)`
+   directly, as `reg10.models.rmsd` does.
+2. The *string* scorer `"neg_root_mean_squared_error"` still works in `cross_validate` /
+   `GridSearchCV`, and it returns **negative RMSE**, not negative MSE. Taking
+   `np.sqrt(-score)` -- the reflex for the old `"neg_mean_squared_error"` -- is wrong here
+   and would report ~317 instead of ~102,400.
+:::
+
+## Running the code yourself
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+python scripts/pair_plot.py            # figures/us-housing-cor.png
+python scripts/lasso_regressor.py      # one algorithm, like lasso-regressor.jl
+python scripts/compare_algorithms.py   # the whole table, like 10-algorithm-compare.jl
+python -m reg10.models                 # smoke test of the package itself
+
+make render                            # quarto render (uses the project venv kernel)
+make publish                           # quarto publish to gh-pages
+```
+
+On macOS/Linux, `make` exports `JUPYTER_PATH` so that Quarto picks the `python3` kernel
+*from `.venv`* instead of a stale user-level kernelspec -- a failure mode worth knowing
+about if `quarto render` complains about a missing Python path.
+
+## References
+
+* faressayah, *Practical Introduction to 10 Regression Algorithms*, Kaggle --
+  <https://www.kaggle.com/code/faressayah/practical-introduction-to-10-regression-algorithm>
+* USA housing data -- <https://www.kaggle.com/datasets/ajayp1/usa-housing>
+* scikit-learn user guide, linear models -- <https://scikit-learn.org/stable/linear_model.html>
+* MLJLinearModels.jl -- <https://github.com/JuliaEconometrics/MLJLinearModels.jl>
+* Julia original: <https://github.com/math4mad/Julia-ML/tree/main/Practical%20Introduction%20to%2010%20Regression%20Algorithm>

@@ -1,0 +1,37 @@
+project:
+  type: website
+  output-dir: _site
+  render:
+    - index.qmd
+
+website:
+  title: "10 Regression Algorithms — Python"
+  description: "Practical introduction to 10 regression algorithms, refactored from Julia/MLJ to Python/scikit-learn."
+  repo-url: https://github.com/math4mad/10-regression-algorithms
+  repo-actions: [edit, source, issue]
+  page-navigation: true
+  navbar:
+    left:
+      - text: "Note"
+        file: index.qmd
+      - text: "Source (Julia)"
+        url: https://github.com/math4mad/Julia-ML/tree/main/Practical%20Introduction%20to%2010%20Regression%20Algorithm
+    right:
+      - icon: github
+        href: https://github.com/math4mad/10-regression-algorithms
+
+format:
+  html:
+    theme: cosmo
+    code-fold: true
+    code-overflow: wrap
+    fig-width: 8.5
+    fig-height: 5
+    anchor-sections: true
+    toc-title: "Contents"
+
+execute:
+  echo: true
+  warning: false
+  message: true
+  timeout: 1800

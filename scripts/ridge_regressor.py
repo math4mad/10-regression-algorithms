@@ -1,0 +1,16 @@
+"""Port of ``ridge-regressor.jl`` — Ridge (L2) regression on the USA housing data.
+
+Run:  ``python scripts/ridge_regressor.py``   (add ``--show`` to open the figures instead of only saving)
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from _common import report_and_plot  # noqa: E402
+
+if __name__ == "__main__":
+    report_and_plot("Ridge", show="--show" in sys.argv, tag="ridge-regressor")
