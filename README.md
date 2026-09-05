@@ -99,6 +99,10 @@ Pushing to the `python` branch runs `.github/workflows/publish.yml`: it installs
 the `gh-pages` branch, which GitHub serves at
 <https://math4mad.github.io/10-regression-algorithms/>.
 
+## License
+
+MIT — see [LICENSE](LICENSE). The underlying dataset is the Kaggle *USA Real Estate* set and remains under its own terms.
+
 ## Acknowledgements
 
 * Original notebook structure: faressayah, *Practical Introduction to 10 Regression Algorithms* (Kaggle)
