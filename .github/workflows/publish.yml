@@ -9,7 +9,7 @@ on:
     - cron: "17 6 * * 1"
 
 permissions:
-  contents: read
+  contents: write   # the deploy step pushes the gh-pages branch with GITHUB_TOKEN
   pages: write
 
 concurrency:
